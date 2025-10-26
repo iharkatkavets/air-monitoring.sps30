@@ -1,7 +1,7 @@
 import sys
 import json
 from time import sleep
-from sps30.sps30 import SPS30
+from sps30 import SPS30
 
 
 def print_result(name: str, result: dict, unit: str = ""):
