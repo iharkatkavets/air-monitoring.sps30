@@ -36,7 +36,8 @@ def upload(host: str, d: dict[str, Any]):
         with urllib.request.urlopen(req, timeout=5) as response:
             logger.info(f"Upload succeeded: {response.status} {response.reason}")
     except urllib.error.HTTPError as e:  # HTTP-level errors (e.g., 404, 500)
-        logger.error(f"HTTPError: {e.code} {e.reason}")
+        json_str = json.dumps(d, ensure_ascii=False, indent=2)
+        logger.error(f"HTTPError: {e.code} {e.reason} \n{json_str}")
     except urllib.error.URLError as e:  # Connection problems, refused, etc.
         logger.error(f"URLError: {e.reason}")
     except Exception as e:  # Any other unexpected issue
