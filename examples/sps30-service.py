@@ -99,14 +99,14 @@ def run(host, delay):
     while True:
         try:
             measurements = pm_sensor.get_measurement()
-            if len(measurements) == 0:
+            if not len(measurements):
                 continue
 
             request_data = map_measurements_to_request(measurements)
             if not request_data:
                 continue
 
-            upload(host, measurements)
+            upload(host, request_data)
         except KeyboardInterrupt:
             print("Exiting ...")
             cleanup()
