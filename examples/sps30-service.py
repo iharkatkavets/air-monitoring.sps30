@@ -87,7 +87,7 @@ def map_measurements_to_request(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-pm_sensor = SPS30()
+pm_sensor = SPS30(sampling_period=opts.delay)
 def run(host, delay):
     res = pm_sensor.write_auto_cleaning_interval_days(2)
     if res["ok"]:
