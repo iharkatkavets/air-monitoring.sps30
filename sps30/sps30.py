@@ -50,7 +50,7 @@ class SPS30:
 
         self.sampling_period = sampling_period
         self.i2c = I2C(bus, address)
-        self.__data = Queue(maxsize=20)
+        self.__data = Queue(maxsize=2)
         self.__valid = {
             "mass_density": False,
             "particle_count": False,
