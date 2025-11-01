@@ -4,6 +4,7 @@ import logging
 from time import sleep
 from queue import Queue
 from datetime import datetime
+from datetime import timezone
 from .i2c import I2C
 
 
@@ -335,7 +336,7 @@ class SPS30:
                         "particle_count_unit": "#/cm3",
                         "particle_size_unit": "um"
                     },
-                    "timestamp": int(datetime.now().timestamp())
+                    "timestamp": int(datetime.now(timezone.utc).timestamp())
                 }
 
                 self.__data.put(result if all(self.__valid.values()) else {})

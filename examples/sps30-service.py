@@ -91,24 +91,27 @@ pm_sensor = SPS30()
 def run(host, delay):
     res = pm_sensor.write_auto_cleaning_interval_days(2)
     if res["ok"]:
-        print(f"Set auto cleaning interval: {res['value']}s")
+        logger.info(f"Set auto cleaning interval: {res['value']}s")
     else:
-        print(f"Failed to set auto cleaning interval: {res['error']}")
+        logger.info(f"Failed to set auto cleaning interval: {res['error']}")
 
     pm_sensor.start_measurement()
     while True:
+        logger.info("Tick round started")
         try:
             measurements = pm_sensor.get_measurement()
             if not len(measurements):
+                logger.info("Skip sending because of data absent")
                 continue
 
             request_data = map_measurements_to_request(measurements)
             if not request_data:
+                logger.info("Skip sending because of data absent")
                 continue
 
             upload(host, request_data)
         except KeyboardInterrupt:
-            print("Exiting ...")
+            logger.info("Exiting ...")
             cleanup()
             sys.exit(0)
         finally:
@@ -116,14 +119,14 @@ def run(host, delay):
 
 
 def cleanup():
-    print("Stop SPS30 sensor hardware safely...")
+    logger.info("Stop SPS30 sensor hardware safely...")
     pm_sensor.stop_measurement()
     time.sleep(2)
-    print("Stop SPS30 sensor complete.")
+    logger.info("Stop SPS30 sensor complete.")
 
 
 def signal_handler(signum, frame):
-    print(f"Received signal {signum}, stopping service...")
+    logger.info(f"Received signal {signum}, stopping service...")
     cleanup()
     sys.exit(0)
 
