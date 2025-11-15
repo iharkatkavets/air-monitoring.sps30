@@ -4,7 +4,9 @@ import logging
 from time import sleep
 from queue import Queue
 from datetime import datetime
-from i2c.i2c import I2C
+from datetime import timezone
+from .i2c import I2C
+
 
 # I2C commands
 CMD_START_MEASUREMENT = [0x00, 0x10]
@@ -49,7 +51,7 @@ class SPS30:
 
         self.sampling_period = sampling_period
         self.i2c = I2C(bus, address)
-        self.__data = Queue(maxsize=20)
+        self.__data = Queue(maxsize=2)
         self.__valid = {
             "mass_density": False,
             "particle_count": False,
@@ -70,40 +72,49 @@ class SPS30:
         # so the calculated value has to be masked with 0xFF
         return (crc & 0x0000FF)
 
-    def firmware_version(self) -> str:
+    def firmware_version(self) -> dict:
         self.i2c.write(CMD_FIRMWARE_VERSION)
         data = self.i2c.read(NBYTES_FIRMWARE_VERSION)
 
         if self.crc_calc(data[:2]) != data[2]:
-            return "CRC mismatched"
+            return {"ok": False, "error": "CRC_MISMATCH", "detail": 2}
 
-        return ".".join(map(str, data[:2]))
+        return {
+            "ok": True,
+            "value": ".".join(map(str, data[:2]))
+        }
 
-    def product_type(self) -> str:
+    def product_type(self) -> dict:
         self.i2c.write(CMD_PRODUCT_TYPE)
         data = self.i2c.read(NBYTES_PRODUCT_TYPE)
         result = ""
 
         for i in range(0, NBYTES_PRODUCT_TYPE, 3):
             if self.crc_calc(data[i:i+2]) != data[i+2]:
-                return "CRC mismatched"
+                return {"ok": False, "error": "CRC_MISMATCH", "detail": i//3}
 
             result += "".join(map(chr, data[i:i+2]))
 
-        return result
+        return {
+            "ok": True,
+            "value": result
+        }
 
-    def serial_number(self) -> str:
+    def serial_number(self) -> dict:
         self.i2c.write(CMD_SERIAL_NUMBER)
         data = self.i2c.read(NBYTES_SERIAL_NUMBER)
         result = ""
 
         for i in range(0, NBYTES_SERIAL_NUMBER, PACKET_SIZE):
             if self.crc_calc(data[i:i+2]) != data[i+2]:
-                return "CRC mismatched"
+                return {"ok": False, "error": "CRC_MISMATCH", "detail": i//3}
 
             result += "".join(map(chr, data[i:i+2]))
 
-        return result
+        return {
+            "ok": True,
+            "value": result
+        }
 
     def read_status_register(self) -> dict:
         self.i2c.write(CMD_READ_STATUS_REGISTER)
@@ -112,7 +123,7 @@ class SPS30:
         status = []
         for i in range(0, NBYTES_READ_STATUS_REGISTER, PACKET_SIZE):
             if self.crc_calc(data[i:i+2]) != data[i+2]:
-                return "CRC mismatched"
+                return {"ok": False, "error": "CRC_MISMATCH", "detail": i//3}
 
             status.extend(data[i:i+2])
 
@@ -123,9 +134,12 @@ class SPS30:
         fan_status = "0 rpm" if int(binary[27]) == 1 else "ok"
 
         return {
-            "speed_status": speed_status,
-            "laser_status": laser_status,
-            "fan_status": fan_status
+            "ok": True,
+            "value": {
+                "speed_status": speed_status,
+                "laser_status": laser_status,
+                "fan_status": fan_status,
+            }
         }
 
     def clear_status_register(self) -> None:
@@ -136,22 +150,19 @@ class SPS30:
         data = self.i2c.read(NBYTES_READ_DATA_READY_FLAG)
 
         if self.crc_calc(data[:2]) != data[2]:
-            if self.logger:
-                self.logger.warning(
-                    "'read_data_ready_flag' CRC mismatched!" +
-                    f"  Data: {data[:2]}" +
-                    f"  Calculated CRC: {self.crc_calc(data[:2])}" +
-                    f"  Expected: {data[2]}")
-            else:
-                print(
-                    "'read_data_ready_flag' CRC mismatched!" +
-                    f"  Data: {data[:2]}" +
-                    f"  Calculated CRC: {self.crc_calc(data[:2])}" +
-                    f"  Expected: {data[2]}")
-
+            self._warn("'read_data_ready_flag' CRC mismatched! "
+                       f"Data: {data[:2]}, "
+                       f"Calculated CRC: {self.crc_calc(data[:2])}, "
+                       f"Expected: {data[2]}")
             return False
 
         return True if data[1] == 1 else False
+
+    def _warn(self, message: str) -> None:
+        if self.logger:
+            self.logger.warning(message)
+        else:
+            print(message)
 
     def sleep(self) -> None:
         self.i2c.write(CMD_SLEEP)
@@ -162,20 +173,23 @@ class SPS30:
     def start_fan_cleaning(self) -> None:
         self.i2c.write(CMD_START_FAN_CLEANING)
 
-    def read_auto_cleaning_interval(self) -> int:
+    def read_auto_cleaning_interval(self) -> dict:
         self.i2c.write(CMD_AUTO_CLEANING_INTERVAL)
         data = self.i2c.read(NBYTES_AUTO_CLEANING_INTERVAL)
 
         interval = []
         for i in range(0, NBYTES_AUTO_CLEANING_INTERVAL, 3):
             if self.crc_calc(data[i:i+2]) != data[i+2]:
-                return "CRC mismatched"
+                return {"ok": False, "error": "CRC_MISMATCH", "detail": i//3}
 
             interval.extend(data[i:i+2])
 
-        return (interval[0] << 24 | interval[1] << 16 | interval[2] << 8 | interval[3])
+        return {
+            "ok": True,
+            "value": (interval[0] << 24 | interval[1] << 16 | interval[2] << 8 | interval[3])
+        }
 
-    def write_auto_cleaning_interval_days(self, days: int) -> int:
+    def write_auto_cleaning_interval_days(self, days: int) -> dict:
         seconds = days * 86400  # 1day = 86400sec
         interval = []
         interval.append((seconds & 0xff000000) >> 24)
@@ -234,18 +248,10 @@ class SPS30:
             for i in range(0, SIZE_FLOAT, PACKET_SIZE):
                 offset = (block * SIZE_FLOAT) + i
                 if self.crc_calc(data[offset:offset+2]) != data[offset+2]:
-                    if self.logger:
-                        self.logger.warning(
-                            "'__mass_density_measurement' CRC mismatched!" +
-                            f"  Data: {data[offset:offset+2]}" +
-                            f"  Calculated CRC: {self.crc_calc(data[offset:offset+2])}" +
-                            f"  Expected: {data[offset+2]}")
-                    else:
-                        print(
-                            "'__mass_density_measurement' CRC mismatched!" +
-                            f"  Data: {data[offset:offset+2]}" +
-                            f"  Calculated CRC: {self.crc_calc(data[offset:offset+2])}" +
-                            f"  Expected: {data[offset+2]}")
+                    self._warn("'__mass_density_measurement' CRC mismatched!" 
+                               f"  Data: {data[offset:offset+2]}" 
+                               f"  Calculated CRC: {self.crc_calc(data[offset:offset+2])}" 
+                               f"  Expected: {data[offset+2]}")
                     self.__valid["mass_density"] = False
                     return {}
 
@@ -274,18 +280,10 @@ class SPS30:
             for i in range(0, SIZE_FLOAT, PACKET_SIZE):
                 offset = (block * SIZE_FLOAT) + i
                 if self.crc_calc(data[offset:offset+2]) != data[offset+2]:
-                    if self.logger:
-                        self.logger.warning(
-                            "'__particle_count_measurement' CRC mismatched!" +
-                            f"  Data: {data[offset:offset+2]}" +
-                            f"  Calculated CRC: {self.crc_calc(data[offset:offset+2])}" +
-                            f"  Expected: {data[offset+2]}")
-                    else:
-                        print(
-                            "'__particle_count_measurement' CRC mismatched!" +
-                            f"  Data: {data[offset:offset+2]}" +
-                            f"  Calculated CRC: {self.crc_calc(data[offset:offset+2])}" +
-                            f"  Expected: {data[offset+2]}")
+                    self._warn("'__particle_count_measurement' CRC mismatched!" +
+                               f"  Data: {data[offset:offset+2]}" +
+                               f"  Calculated CRC: {self.crc_calc(data[offset:offset+2])}" +
+                               f"  Expected: {data[offset+2]}")
 
                     self.__valid["particle_count"] = False
                     return {}
@@ -303,18 +301,10 @@ class SPS30:
         size = []
         for i in range(0, SIZE_FLOAT, PACKET_SIZE):
             if self.crc_calc(data[i:i+2]) != data[i+2]:
-                if self.logger:
-                    self.logger.warning(
-                        "'__particle_size_measurement' CRC mismatched!" +
-                        f"  Data: {data[i:i+2]}" +
-                        f"  Calculated CRC: {self.crc_calc(data[i:i+2])}" +
-                        f"  Expected: {data[i+2]}")
-                else:
-                    print(
-                        "'__particle_size_measurement' CRC mismatched!" +
-                        f"  Data: {data[i:i+2]}" +
-                        f"  Calculated CRC: {self.crc_calc(data[i:i+2])}" +
-                        f"  Expected: {data[i+2]}")
+                self._warn("'__particle_size_measurement' CRC mismatched!"
+                           f"  Data: {data[i:i+2]}"
+                           f"  Calculated CRC: {self.crc_calc(data[i:i+2])}"
+                           f"  Expected: {data[i+2]}")
 
                 self.__valid["particle_size"] = False
                 return 0.0
@@ -346,25 +336,19 @@ class SPS30:
                         "particle_count_unit": "#/cm3",
                         "particle_size_unit": "um"
                     },
-                    "timestamp": int(datetime.now().timestamp())
+                    "timestamp": int(datetime.now(timezone.utc).timestamp())
                 }
 
                 self.__data.put(result if all(self.__valid.values()) else {})
 
             except KeyboardInterrupt:
-                if self.logger:
-                    self.logger.warning("Stopping measurement...")
-                else:
-                    print("Stopping measurement...")
+                self._warn("Stopping measurement...")
 
                 self.stop_measurement()
                 sys.exit()
 
             except Exception as e:
-                if self.logger:
-                    self.logger.warning(f"{type(e).__name__}: {e}")
-                else:
-                    print(f"{type(e).__name__}: {e}")
+                self._warn(f"{type(e).__name__}: {e}")
 
             finally:
                 sleep(self.sampling_period)

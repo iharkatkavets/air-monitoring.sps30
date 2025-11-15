@@ -1,5 +1,6 @@
 import io
 from fcntl import ioctl
+import errno, time
 
 I2C_SLAVE = 0x0703
 
@@ -18,8 +19,15 @@ class I2C:
     def write(self, data: list):
         self.fw.write(bytearray(data))
 
-    def read(self, nbytes: int) -> list:
-        return list(self.fr.read(nbytes))
+    def _retry(self, fn, *args, retries=3, delay=0.05):
+        for i in range(retries):
+            try: return fn(*args)
+            except OSError as e:
+                if e.errno != errno.EIO or i == retries-1: raise
+                time.sleep(delay*(i+1))  # brief backoff
+
+    def read(self, nbytes: int) -> list[int]:
+        return list(self._retry(self.fr.read, nbytes))
 
     def close(self):
         self.fw.close()
