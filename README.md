@@ -109,3 +109,29 @@ if __name__ == "__main__":
 ### Dependencies
 
 None
+
+### `systemd` service configuration
+
+```ini
+[Unit]
+Description=SPS30 Measurement service
+After=network.target
+
+[Service]
+Environment="PYTHONPATH=/home/pi/services/sps30-service"
+ExecStart=/usr/bin/python3 /home/pi/services/sps30-service/examples/sps30-service.py --host "raspberrypi:4001" --delay 1
+WorkingDirectory=/home/pi/
+User=root
+Group=root
+Restart=always
+RestartSec=10
+TimeoutStopSec=10
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+StateDirectory=sps30-measurement
+RuntimeDirectory=sps30-measurement
+
+[Install]
+WantedBy=multi-user.target
+```
