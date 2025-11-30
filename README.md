@@ -112,6 +112,8 @@ None
 
 ### `systemd` service configuration
 
+Create a file at `/etc/systemd/system/sps30-measurement.service`
+
 ```ini
 [Unit]
 Description=SPS30 Measurement service
@@ -134,4 +136,12 @@ RuntimeDirectory=sps30-measurement
 
 [Install]
 WantedBy=multi-user.target
+```
+
+Then run 
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable sps30-measurement
+sudo systemctl start sps30-measurement
 ```
